@@ -48,7 +48,7 @@ Reopen Tidy after changing either setting. Destinations outside those three fold
 | Dry Run | Evaluates rules and logs what *would* happen, moves nothing |
 | Organize Now | Runs every rule immediately, including the age-based ones |
 | Open Log | Native window listing recent moves, newest first |
-| Edit Rules | Native window for editing `rules.json`, validated before it saves |
+| Edit Rules | Rule editor window: fields and folder pickers, no JSON required |
 | Launch at Login | Registers the app with `SMAppService` |
 | Quit Tidy | Stops watching |
 
@@ -126,22 +126,34 @@ If Spotlight keeps refreshing access times on your machine and rule 4 never fire
 
 ### The rules editor
 
-**Edit Rules** opens a window with a table of the rules in evaluation order, position
-first, then trigger, name, watched folders and destination. Disabled rules are greyed and
-marked `off`. Warnings, such as a destination using an unknown token, appear above the
-text.
+**Edit Rules** opens a normal Mac window: rules down the left in evaluation order, the
+selected rule's fields on the right. No JSON unless you want it.
 
-Below the table is the raw JSON, validated as you type. A syntax error or a missing key is
-reported at the bottom with its location, for example `missing "destination" at rules[3]`,
-and **Save** stays disabled until the text parses, so a broken file can never reach disk.
-Command-S saves. Saving writes your text as typed, reloads the rules and sweeps at once.
+- Checkbox per rule to turn it off without deleting it, drag to reorder, and **Add Rule**,
+  **Duplicate**, **Delete** underneath. Order is what decides which rule claims a file.
+- **General** holds the term folder, the course codes, and the settle window.
+- A rule's fields: name, enabled, whether it runs on file-system events or once a day, the
+  folders it watches (chosen with a folder picker), extensions, an optional filename
+  pattern, the two age conditions, the course-code requirement, and the destination, also
+  pickable, with the token list right underneath.
+- Problems that would stop a rule working, such as a missing destination, appear in red at
+  the bottom and **Save** stays disabled until they are fixed. Warnings, such as a
+  destination using an unknown token, appear in orange and do not block saving.
+- **Save** or Command-S writes the file, reloads the rules and sweeps at once.
 
-**Reload** re-reads the file and **Reveal in Finder** shows it. If another editor changed
-the file while the window was open, saving asks before overwriting.
+### Editing the JSON directly
 
-### Adding a rule
+**Open in Text Editor** in the same window hands `rules.json` to your editor, and
+**Reveal in Finder** shows it. Bring the Tidy window back to the front and it re-reads the
+file, or run **Organize Now** from the menu; either way an outside edit lands within a
+minute on its own.
 
-Drop a new object into `rules`. For example, filing job application material by company:
+Both routes write the same file, so mix them freely. Saving from the window rewrites the
+JSON in its own formatting, but it never drops keys the window does not show, such as
+`skipExtensions` and `ignoreProcesses`. If the file is broken, the window says where and
+offers to open it in your editor or replace it with the built-in rules.
+
+A rule as JSON, for example filing job application material by company:
 
 ```json
 {
@@ -151,10 +163,6 @@ Drop a new object into `rules`. For example, filing job application material by 
   "destination": "~/Documents/Career/resume-and-cover-letter/applications/{company}"
 }
 ```
-
-Save, and the rule is live: Tidy starts watching any new folders it names and applies it
-immediately. Rules edited outside the app land within a minute, or at once via
-**Organize Now**.
 
 ---
 

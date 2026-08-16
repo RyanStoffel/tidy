@@ -184,18 +184,6 @@ public enum ConfigStore {
         try data.write(to: url, options: .atomic)
     }
 
-    public static func decode(_ text: String) throws -> Config {
-        try JSONDecoder().decode(Config.self, from: Data(text.utf8))
-    }
-
-    /// Writes the user's text verbatim so hand formatting survives a save.
-    public static func write(_ text: String, to url: URL = Paths.rulesFile) throws {
-        try Paths.ensureSupportDirectory()
-        var data = Data(text.utf8)
-        if data.last != 0x0A { data.append(0x0A) }
-        try data.write(to: url, options: .atomic)
-    }
-
     /// Turns a decoding failure into something worth showing in the rules editor.
     public static func describe(_ error: Error) -> String {
         switch error {

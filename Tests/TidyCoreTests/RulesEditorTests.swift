@@ -20,7 +20,7 @@ final class RulesEditorTests: XCTestCase {
         try Data(text.utf8).write(to: url, options: .atomic)
     }
 
-    private var minimal: String {
+    private var twoRules: String {
         """
         {
           "rules": [
@@ -32,96 +32,125 @@ final class RulesEditorTests: XCTestCase {
         """
     }
 
-    func testSummaryShowsEvaluationOrderTriggerAndDisabledRules() throws {
-        try write(minimal)
+    func testLoadKeepsRuleOrderAndPerRuleSettings() throws {
+        try write(twoRules)
 
-        let snapshot = try editor.load()
+        let config = try editor.load()
 
-        XCTAssertTrue(snapshot.isValid)
-        XCTAssertEqual(snapshot.summary.map(\.id), [1, 2])
-        XCTAssertEqual(snapshot.summary.map(\.name), ["Inbox", "Parked"])
-        XCTAssertEqual(snapshot.summary.map(\.trigger), ["event", "daily"])
-        XCTAssertEqual(snapshot.summary.map(\.enabled), [true, false])
-        XCTAssertEqual(snapshot.summary.first?.destination, "~/Downloads/Random")
+        XCTAssertEqual(config.rules.map(\.name), ["Inbox", "Parked"])
+        XCTAssertEqual(config.rules.map(\.trigger), [.event, .daily])
+        XCTAssertEqual(config.rules.map(\.enabled), [true, false])
+        XCTAssertEqual(config.rules.last?.match.minIdleDays, 30)
     }
 
-    func testWarningsSurfaceWithoutFailingValidation() {
-        let snapshot = editor.inspect("""
-        { "rules": [ { "name": "Typo", "watch": ["~/Downloads"], "destination": "~/Sorted/{semester}" } ] }
-        """)
+    func testUnreadableFileReportsTheLocation() throws {
+        try write("{ \"rules\": [ { \"name\": \"Nowhere\", \"watch\": [\"~/Downloads\"] } ] }")
 
-        XCTAssertTrue(snapshot.isValid)
-        XCTAssertEqual(snapshot.warnings, ["Typo: destination uses unknown token {semester}"])
+        XCTAssertThrowsError(try editor.load()) { error in
+            XCTAssertEqual(error as? RulesEditorError, .invalid("missing \"destination\" at rules[0]"))
+        }
     }
 
-    func testSyntaxErrorIsReportedAndNothingIsWritten() throws {
-        try write(minimal)
+    func testSyntaxErrorIsReportedAsInvalid() throws {
+        try write("{ \"rules\": [ ,, ] }")
+
+        XCTAssertThrowsError(try editor.load()) { error in
+            guard case RulesEditorError.invalid(let message) = error else {
+                return XCTFail("expected .invalid, got \(error)")
+            }
+            XCTAssertTrue(message.hasPrefix("invalid JSON:"), message)
+        }
+    }
+
+    func testProblemsBlockRulesThatCanNeverRun() {
+        let config = Config(rules: [
+            Rule(name: "  ", watch: ["~/Downloads"], destination: "~/Sorted"),
+            Rule(name: "No folder", watch: [], destination: "~/Sorted"),
+            Rule(name: "No destination", watch: ["~/Downloads"], destination: " "),
+            Rule(name: "Fine", watch: ["~/Downloads"], destination: "~/Sorted"),
+        ])
+
+        XCTAssertEqual(RulesEditor.problems(in: config), [
+            "Rule 1 needs a name",
+            "No folder needs at least one folder to watch",
+            "No destination needs a destination",
+        ])
+    }
+
+    func testSaveRefusesRulesWithProblems() throws {
+        try write(twoRules)
         _ = try editor.load()
-        let broken = minimal.replacingOccurrences(of: "\"rules\"", with: "\"rules\"  ,,")
-
-        let snapshot = editor.inspect(broken)
-        XCTAssertFalse(snapshot.isValid)
-        XCTAssertTrue(snapshot.error?.hasPrefix("invalid JSON:") == true, snapshot.error ?? "")
+        let broken = Config(rules: [Rule(name: "Nowhere", watch: [], destination: "")])
 
         XCTAssertThrowsError(try editor.save(broken)) { error in
             guard case RulesEditorError.invalid = error else {
                 return XCTFail("expected .invalid, got \(error)")
             }
         }
-        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), minimal)
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), twoRules)
     }
 
-    func testMissingRequiredKeyNamesTheRule() {
-        let snapshot = editor.inspect("""
-        { "rules": [ { "name": "Nowhere", "watch": ["~/Downloads"] } ] }
+    func testWarningsDoNotBlockSaving() throws {
+        try write(twoRules)
+        var config = try editor.load()
+        config.rules.append(Rule(name: "Typo", watch: ["~/Downloads"], destination: "~/Sorted/{semester}"))
+
+        XCTAssertEqual(RulesEditor.warnings(in: config), ["Typo: destination uses unknown token {semester}"])
+        XCTAssertNoThrow(try editor.save(config))
+        XCTAssertEqual(try ConfigStore.load(from: url).rules.count, 3)
+    }
+
+    func testSaveKeepsFieldsTheGuiDoesNotShow() throws {
+        try write("""
+        {
+          "skipExtensions": ["crdownload", "myext"],
+          "ignoreProcesses": ["mds", "MyApp"],
+          "rules": [ { "name": "Inbox", "watch": ["~/Downloads"], "destination": "~/Downloads/Random" } ]
+        }
         """)
+        var config = try editor.load()
+        config.rules[0].name = "Inbox tray"
 
-        XCTAssertEqual(snapshot.error, "missing \"destination\" at rules[0]")
-    }
+        try editor.save(config)
 
-    func testWrongTypeNamesTheField() {
-        let snapshot = editor.inspect("""
-        { "settleSeconds": "five", "rules": [] }
-        """)
-
-        XCTAssertEqual(snapshot.error, "wrong type at settleSeconds: expected Double")
-    }
-
-    func testSaveKeepsTheTextVerbatimApartFromATrailingNewline() throws {
-        try write(minimal)
-        _ = try editor.load()
-        let edited = minimal.replacingOccurrences(of: "\"Inbox\"", with: "\"Inbox tray\"")
-
-        try editor.save(edited)
-
-        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), edited + "\n")
-        XCTAssertEqual(try editor.load().summary.first?.name, "Inbox tray")
+        let saved = try ConfigStore.load(from: url)
+        XCTAssertEqual(saved.skipExtensions, ["crdownload", "myext"])
+        XCTAssertEqual(saved.ignoreProcesses, ["mds", "MyApp"])
+        XCTAssertEqual(saved.rules.first?.name, "Inbox tray")
     }
 
     func testOutsideEditIsNotClobberedUnlessForced() throws {
-        try write(minimal)
-        _ = try editor.load()
+        try write(twoRules)
+        var mine = try editor.load()
+        mine.courseTerm = "SP27"
+
         // Another editor writes the file after this one opened it.
-        let outside = minimal.replacingOccurrences(of: "\"Inbox\"", with: "\"Outside\"")
-        try write(outside)
-        // The stamp has one second resolution on some filesystems.
+        try write(twoRules.replacingOccurrences(of: "\"Inbox\"", with: "\"Outside\""))
         TestSupport.setTimes(url, modified: Date().addingTimeInterval(5), accessed: Date())
 
-        let mine = minimal.replacingOccurrences(of: "\"Inbox\"", with: "\"Mine\"")
         XCTAssertThrowsError(try editor.save(mine)) { error in
             XCTAssertEqual(error as? RulesEditorError, .changedOnDisk)
         }
-        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), outside)
+        XCTAssertEqual(try ConfigStore.load(from: url).rules.first?.name, "Outside")
 
         try editor.save(mine, force: true)
-        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), mine + "\n")
+        XCTAssertEqual(try ConfigStore.load(from: url).courseTerm, "SP27")
     }
 
     func testLoadCreatesTheDefaultFileWhenMissing() throws {
-        let snapshot = try editor.load()
+        let config = try editor.load()
 
-        XCTAssertTrue(snapshot.isValid)
-        XCTAssertEqual(snapshot.ruleCount, Config.default.rules.count)
+        XCTAssertEqual(config, Config.default)
         XCTAssertEqual(try ConfigStore.load(from: url), Config.default)
+    }
+
+    func testSavingTwiceInARowDoesNotTripTheConflictCheck() throws {
+        var config = try editor.load()
+        config.courseTerm = "SP27"
+        try editor.save(config)
+
+        config.courseTerm = "SU27"
+        XCTAssertNoThrow(try editor.save(config))
+        XCTAssertEqual(try ConfigStore.load(from: url).courseTerm, "SU27")
     }
 }
