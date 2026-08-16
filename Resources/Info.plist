@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.plist">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Tidy</string>
+	<key>CFBundleDisplayName</key>
+	<string>Tidy</string>
+	<key>CFBundleExecutable</key>
+	<string>Tidy</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.ryanstoffel.tidy</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Tidy files screenshots from your Desktop into Pictures.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Tidy sorts and archives files in your Downloads folder.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Tidy routes school documents into your Documents folder.</string>
+</dict>
+</plist>

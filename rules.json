@@ -1,0 +1,215 @@
+{
+  "courseCodes" : [
+    "CS101",
+    "CS475",
+    "MATH-241",
+    "ENGR 310"
+  ],
+  "courseTerm" : "FA26",
+  "ignoreProcesses" : [
+    "mds",
+    "mds_stores",
+    "mdworker",
+    "mdworker_shared",
+    "mdsync",
+    "mdbulkimport",
+    "fseventsd",
+    "backupd",
+    "Spotlight",
+    "QuickLookSatellite",
+    "quicklookd",
+    "Tidy"
+  ],
+  "rules" : [
+    {
+      "destination" : "~/Pictures/Screenshots/{year}/{month}",
+      "enabled" : true,
+      "includeDirectories" : false,
+      "match" : {
+        "namePattern" : "^Screen ?shot (?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2}) at .+\\.png$",
+        "requiresCourseCode" : false
+      },
+      "name" : "Screenshots",
+      "trigger" : "event",
+      "watch" : [
+        "~/Desktop"
+      ]
+    },
+    {
+      "destination" : "~/Documents/School/{term}/Courses/{course}",
+      "enabled" : true,
+      "includeDirectories" : false,
+      "match" : {
+        "extensions" : [
+          "pdf",
+          "doc",
+          "docx"
+        ],
+        "requiresCourseCode" : true
+      },
+      "name" : "School documents",
+      "trigger" : "event",
+      "watch" : [
+        "~/Downloads/Documents"
+      ]
+    },
+    {
+      "destination" : "~/Downloads/Code",
+      "enabled" : true,
+      "includeDirectories" : false,
+      "match" : {
+        "extensions" : [
+          "py",
+          "js",
+          "ts",
+          "tsx",
+          "jsx",
+          "json",
+          "sh",
+          "zsh",
+          "bash",
+          "ipynb",
+          "swift",
+          "rs",
+          "go",
+          "c",
+          "h",
+          "cpp",
+          "hpp",
+          "java",
+          "rb",
+          "sql",
+          "yaml",
+          "yml",
+          "toml",
+          "patch",
+          "diff"
+        ],
+        "requiresCourseCode" : false
+      },
+      "name" : "Downloads: code",
+      "trigger" : "event",
+      "watch" : [
+        "~/Downloads"
+      ]
+    },
+    {
+      "destination" : "~/Downloads/Images",
+      "enabled" : true,
+      "includeDirectories" : false,
+      "match" : {
+        "extensions" : [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "svg",
+          "webp",
+          "heic",
+          "tiff",
+          "bmp"
+        ],
+        "requiresCourseCode" : false
+      },
+      "name" : "Downloads: images",
+      "trigger" : "event",
+      "watch" : [
+        "~/Downloads"
+      ]
+    },
+    {
+      "destination" : "~/Downloads/Videos",
+      "enabled" : true,
+      "includeDirectories" : false,
+      "match" : {
+        "extensions" : [
+          "mp4",
+          "mov",
+          "avi",
+          "mkv",
+          "webm",
+          "m4v"
+        ],
+        "requiresCourseCode" : false
+      },
+      "name" : "Downloads: videos",
+      "trigger" : "event",
+      "watch" : [
+        "~/Downloads"
+      ]
+    },
+    {
+      "destination" : "~/Downloads/Documents",
+      "enabled" : true,
+      "includeDirectories" : false,
+      "match" : {
+        "extensions" : [
+          "pdf",
+          "docx",
+          "doc",
+          "pptx",
+          "ppt",
+          "xlsx",
+          "xls",
+          "txt",
+          "md",
+          "rtf",
+          "csv",
+          "epub",
+          "pages",
+          "numbers",
+          "key"
+        ],
+        "requiresCourseCode" : false
+      },
+      "name" : "Downloads: documents",
+      "trigger" : "event",
+      "watch" : [
+        "~/Downloads"
+      ]
+    },
+    {
+      "destination" : "~/Downloads/Random",
+      "enabled" : true,
+      "includeDirectories" : false,
+      "match" : {
+        "requiresCourseCode" : false
+      },
+      "name" : "Downloads: everything else",
+      "trigger" : "event",
+      "watch" : [
+        "~/Downloads"
+      ]
+    },
+    {
+      "destination" : "~/Downloads/Archive/{sourceFolder}",
+      "enabled" : true,
+      "includeDirectories" : false,
+      "match" : {
+        "minIdleDays" : 30,
+        "requiresCourseCode" : false
+      },
+      "name" : "Archive stale downloads",
+      "trigger" : "daily",
+      "watch" : [
+        "~/Downloads/Code",
+        "~/Downloads/Images",
+        "~/Downloads/Videos",
+        "~/Downloads/Documents",
+        "~/Downloads/Random"
+      ]
+    }
+  ],
+  "schemaVersion" : 1,
+  "settleSeconds" : 5,
+  "skipExtensions" : [
+    "crdownload",
+    "download",
+    "part",
+    "partial",
+    "opdownload",
+    "aria2",
+    "filepart",
+    "tmp"
+  ]
+}
