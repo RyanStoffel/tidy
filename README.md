@@ -1,10 +1,14 @@
 # Tidy
 
-A free, open source macOS menu bar app that keeps your folders organized. Rules live in a
-JSON file you own; Tidy watches the folders they name and moves files as they land.
+A free, open source macOS menu bar app that keeps your folders organized. Rules are edited
+in a normal Mac window; Tidy watches the folders they name and moves files as they land.
 
 It is a small alternative to Hazel: no polling loop, no cron job, no account. Watches use
 kernel file-system events, so a screenshot is filed the moment it hits the Desktop.
+
+![The rules editor](docs/rules.png)
+
+![The log](docs/log.png)
 
 ---
 
@@ -219,7 +223,8 @@ swift test             # rules engine tests
 ./build.sh --zip       # release artifact plus the sha256 for the cask
 ```
 
-The app icon is generated, not checked in by hand: `swift tools/make-icon.swift`.
+The app icon is generated, not checked in by hand: `swift tools/make-icon.swift`. The
+screenshots above come from the app itself: `Tidy --snapshot docs`.
 
 ---
 

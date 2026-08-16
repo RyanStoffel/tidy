@@ -21,18 +21,18 @@ final class RulesModel: ObservableObject {
     @Published var courseTerm = ""
     @Published var courseCodes = ""
     @Published var settleSeconds: Double = 5
-    @Published var selection: Selection? = .general
+    @Published var selection: Selection = .general
 
     @Published var problems: [String] = []
     @Published var warnings: [String] = []
-    /// The file on disk cannot be parsed; the GUI cannot safely edit it.
+    /// The file on disk cannot be parsed; the fields cannot safely edit it.
     @Published var loadError: String?
     /// Outcome of the last save or reload.
     @Published var message: String?
 
     private let editor: RulesEditor
     private let onSaved: () -> Void
-    /// Everything the GUI does not expose, kept so a save never drops it.
+    /// Everything the fields do not expose, kept so a save never drops it.
     private var loaded = Config.default
 
     init(editor: RulesEditor = RulesEditor(), onSaved: @escaping () -> Void) {
@@ -58,8 +58,7 @@ final class RulesModel: ObservableObject {
 
     func reload() {
         do {
-            let config = try editor.load()
-            apply(config)
+            apply(try editor.load())
             loadError = nil
             message = nil
         } catch {
@@ -74,7 +73,7 @@ final class RulesModel: ObservableObject {
     func reloadIfChangedOnDisk() {
         guard editor.changedOnDisk else { return }
         if isDirty, loadError == nil {
-            message = "rules.json changed on disk. Reload to see it."
+            message = "Changed on disk. Reload to see it."
         } else {
             reload()
             message = "Reloaded"
@@ -105,9 +104,9 @@ final class RulesModel: ObservableObject {
 
     func restoreDefaults() {
         apply(.default)
-        revalidate()
-        message = "Defaults loaded, not yet saved"
         loadError = nil
+        message = "Default rules loaded. Save to keep them."
+        revalidate()
     }
 
     // MARK: - Rules
@@ -120,7 +119,7 @@ final class RulesModel: ObservableObject {
     }
 
     func duplicate(_ id: UUID) {
-        guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = index(of: id) else { return }
         var copy = drafts[index].rule
         copy.name += " copy"
         let draft = RuleDraft(rule: copy)
@@ -130,22 +129,27 @@ final class RulesModel: ObservableObject {
     }
 
     func remove(_ id: UUID) {
-        guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = index(of: id) else { return }
         drafts.remove(at: index)
-        selection = drafts.indices.contains(index)
-            ? .rule(drafts[index].id)
-            : drafts.last.map { .rule($0.id) } ?? .general
+        if let next = drafts.indices.contains(index) ? drafts[index] : drafts.last {
+            selection = .rule(next.id)
+        } else {
+            selection = .general
+        }
         revalidate()
     }
 
     /// Order is the evaluation order, so moving a rule changes which one claims a file.
-    func move(from source: IndexSet, to destination: Int) {
-        drafts.move(fromOffsets: source, toOffset: destination)
+    func move(_ id: UUID, by offset: Int) {
+        guard let index = index(of: id) else { return }
+        let target = index + offset
+        guard drafts.indices.contains(target) else { return }
+        drafts.swapAt(index, target)
         revalidate()
     }
 
     func index(of id: UUID) -> Int? {
-        drafts.firstIndex(where: { $0.id == id })
+        drafts.firstIndex { $0.id == id }
     }
 
     func revalidate() {
@@ -191,7 +195,7 @@ final class RulesModel: ObservableObject {
         }
     }
 
-    /// "pdf, DOCX , doc" becomes ["pdf", "docx", "doc"]; empty becomes an empty list.
+    /// "pdf, DOCX , .doc" becomes ["pdf", "docx", "doc"].
     static func parseList(_ text: String, lowercased: Bool) -> [String] {
         var seen = Set<String>()
         return text
@@ -223,39 +227,76 @@ struct RulesView: View {
     @ObservedObject var model: RulesModel
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-        } detail: {
-            detail
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                sidebar
+                    .frame(width: 236)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                Divider()
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            Divider()
+            footer
         }
-        .navigationSplitViewColumnWidth(min: 220, ideal: 240)
-        .safeAreaInset(edge: .bottom) { footer }
-        .frame(minWidth: 820, minHeight: 520)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(minWidth: 820, minHeight: 540)
         .onChange(of: model.drafts) { _ in model.revalidate() }
         .onChange(of: model.courseCodes) { _ in model.revalidate() }
         .onChange(of: model.courseTerm) { _ in model.revalidate() }
         .onChange(of: model.settleSeconds) { _ in model.revalidate() }
     }
 
+    // MARK: Sidebar
+
     private var sidebar: some View {
-        List(selection: $model.selection) {
-            Section {
-                Text("General").tag(RulesModel.Selection.general)
-            }
-            Section("Rules, in order") {
-                ForEach(model.drafts) { draft in
-                    row(draft)
-                        .tag(RulesModel.Selection.rule(draft.id))
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    sidebarRow(
+                        title: "General",
+                        badge: nil,
+                        subtitle: "Semester and safety",
+                        isSelected: model.selection == .general,
+                        isDimmed: false
+                    ) {
+                        model.selection = .general
+                    }
+
+                    Text("RULES, IN ORDER")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.top, 14)
+                        .padding(.bottom, 2)
+
+                    ForEach(Array(model.drafts.enumerated()), id: \.element.id) { index, draft in
+                        sidebarRow(
+                            title: draft.rule.name.isEmpty ? "Untitled rule" : draft.rule.name,
+                            badge: "\(index + 1)",
+                            subtitle: subtitle(for: draft.rule),
+                            isSelected: model.selection == .rule(draft.id),
+                            isDimmed: !draft.rule.enabled
+                        ) {
+                            model.selection = .rule(draft.id)
+                        }
                         .contextMenu {
+                            Button("Move Up") { model.move(draft.id, by: -1) }
+                                .disabled(index == 0)
+                            Button("Move Down") { model.move(draft.id, by: 1) }
+                                .disabled(index == model.drafts.count - 1)
+                            Divider()
                             Button("Duplicate") { model.duplicate(draft.id) }
                             Button("Delete") { model.remove(draft.id) }
                         }
+                    }
                 }
-                .onMove { model.move(from: $0, to: $1) }
+                .padding(8)
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            HStack(spacing: 4) {
+
+            Divider()
+
+            HStack(spacing: 8) {
                 Button("Add Rule") { model.addRule() }
                 Spacer()
                 if case .rule(let id) = model.selection {
@@ -263,74 +304,102 @@ struct RulesView: View {
                     Button("Delete") { model.remove(id) }
                 }
             }
-            .font(.callout)
+            .controlSize(.small)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
         }
     }
 
-    private func row(_ draft: RuleDraft) -> some View {
-        let index = model.index(of: draft.id)
-        return HStack(spacing: 8) {
-            if let index {
-                Toggle("", isOn: $model.drafts[index].rule.enabled)
-                    .labelsHidden()
-                    .toggleStyle(.checkbox)
-                    .help(draft.rule.enabled ? "Rule is on" : "Rule is off")
-            }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(draft.rule.name.isEmpty ? "Untitled rule" : draft.rule.name)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(draft.rule.trigger == .daily ? "once a day" : "when files change")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .opacity(draft.rule.enabled ? 1 : 0.5)
-        }
+    private func subtitle(for rule: Rule) -> String {
+        guard rule.enabled else { return "off" }
+        return rule.trigger == .daily ? "once a day" : "when files change"
     }
+
+    private func sidebarRow(
+        title: String,
+        badge: String?,
+        subtitle: String,
+        isSelected: Bool,
+        isDimmed: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 7) {
+                Text(badge ?? "")
+                    .font(.system(size: 11, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(isSelected ? AnyShapeStyle(.white.opacity(0.7)) : AnyShapeStyle(.tertiary))
+                    .frame(width: 12, alignment: .trailing)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(isSelected ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.secondary))
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isSelected ? Color.accentColor : .clear)
+            )
+            .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .opacity(isDimmed && !isSelected ? 0.55 : 1)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Detail
 
     @ViewBuilder
     private var detail: some View {
         if let loadError = model.loadError {
             unreadableFile(loadError)
+        } else if case .rule(let id) = model.selection, let index = model.index(of: id) {
+            RuleDetailView(
+                rule: $model.drafts[index].rule,
+                position: index + 1,
+                total: model.drafts.count,
+                onMove: { offset in model.move(id, by: offset) }
+            )
         } else {
-            switch model.selection {
-            case .rule(let id):
-                if let index = model.index(of: id) {
-                    RuleDetailView(rule: $model.drafts[index].rule, position: index + 1)
-                } else {
-                    Text("Select a rule").foregroundStyle(.secondary)
-                }
-            default:
-                GeneralDetailView(model: model)
-            }
+            GeneralDetailView(model: model)
         }
     }
 
     private func unreadableFile(_ error: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("rules.json cannot be read")
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Your rules file cannot be read")
                 .font(.headline)
             Text(error)
                 .foregroundStyle(.red)
                 .textSelection(.enabled)
-            Text("Fix it in a text editor, or replace it with the built-in rules.")
+            Text("Fix it in a text editor, or start again from the built-in rules.")
                 .foregroundStyle(.secondary)
             HStack {
                 Button("Open in Text Editor") { model.openInTextEditor() }
                 Button("Reload") { model.reload() }
                 Button("Use Default Rules") { model.restoreDefaults() }
             }
+            .padding(.top, 4)
         }
-        .padding(20)
+        .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
+
+    // MARK: Footer
 
     private var footer: some View {
         HStack(spacing: 10) {
             status
-            Spacer(minLength: 8)
+            Spacer(minLength: 12)
             Button("Open in Text Editor") { model.openInTextEditor() }
             Button("Reveal in Finder") { model.revealInFinder() }
             Button("Reload") { model.reload() }
@@ -338,7 +407,6 @@ struct RulesView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(!model.canSave)
         }
-        .font(.callout)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.bar)
@@ -347,13 +415,21 @@ struct RulesView: View {
     @ViewBuilder
     private var status: some View {
         if let problem = model.problems.first {
-            Text(problem).foregroundStyle(.red).lineLimit(1)
+            Label(problem, systemImage: "exclamationmark.octagon.fill")
+                .foregroundStyle(.red)
+                .lineLimit(1)
         } else if let warning = model.warnings.first {
-            Text(warning).foregroundStyle(.orange).lineLimit(1)
+            Label(warning, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .lineLimit(1)
         } else if let message = model.message {
-            Text(message).foregroundStyle(.secondary).lineLimit(1)
+            Text(message)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         } else {
-            Text("\(model.drafts.count) rules\(model.isDirty ? ", unsaved changes" : "")")
+            Text(model.isDirty
+                 ? "\(model.drafts.count) rules, unsaved changes"
+                 : "\(model.drafts.count) rules")
                 .foregroundStyle(.secondary)
         }
     }
@@ -365,27 +441,49 @@ struct GeneralDetailView: View {
 
     var body: some View {
         Form {
-            Section("Semester") {
-                TextField("Term folder", text: $model.courseTerm)
-                TextField("Course codes", text: $model.courseCodes, axis: .vertical)
-                    .lineLimit(2...4)
+            Section {
+                LabeledContent("Term folder") {
+                    FormField(text: $model.courseTerm, prompt: "FA26")
+                }
+                LabeledContent("Course codes") {
+                    FormField(text: $model.courseCodes, prompt: "CS101, MATH-241")
+                }
+            } header: {
+                Text("Semester")
+            } footer: {
                 Text("Used by rules whose destination contains {term} or {course}. Codes match filenames ignoring case, spaces and dashes, so CS101 also matches \"cs 101\".")
-                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Section("Safety") {
-                TextField("Wait for size to settle", value: $model.settleSeconds, format: .number)
-                    .frame(maxWidth: 120)
-                Text("Seconds between the two size checks that decide a download finished.")
-                    .font(.caption)
+            Section {
+                LabeledContent("Wait for size to settle") {
+                    HStack(spacing: 6) {
+                        TextField("", value: $model.settleSeconds, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 58)
+                        Text("seconds").foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Safety")
+            } footer: {
+                Text("A file has to hold the same size across two checks this far apart before Tidy moves it, so half-finished downloads are left alone.")
                     .foregroundStyle(.secondary)
             }
 
-            Section("File") {
-                LabeledContent("Rules file", value: model.rulesPath)
-                Text("Skipped extensions and ignored processes are not shown here. Edit them in the text editor; saving from this window keeps them.")
-                    .font(.caption)
+            Section {
+                LabeledContent("Rules file") {
+                    Text(model.rulesPath)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                        .textSelection(.enabled)
+                }
+            } header: {
+                Text("File")
+            } footer: {
+                Text("Skipped extensions and ignored processes are not shown here. Edit those in a text editor; saving from this window keeps them.")
                     .foregroundStyle(.secondary)
             }
 
@@ -401,10 +499,28 @@ struct GeneralDetailView: View {
     }
 }
 
+/// A text field sized and aligned the way the rest of the form expects.
+struct FormField: View {
+    @Binding var text: String
+    let prompt: String
+    var monospaced = false
+    var width: CGFloat = 280
+
+    var body: some View {
+        TextField("", text: $text, prompt: Text(prompt))
+            .textFieldStyle(.roundedBorder)
+            .font(monospaced ? .system(size: 12, design: .monospaced) : nil)
+            .multilineTextAlignment(.leading)
+            .frame(width: width)
+    }
+}
+
 /// One rule, as fields rather than JSON.
 struct RuleDetailView: View {
     @Binding var rule: Rule
     let position: Int
+    let total: Int
+    let onMove: (Int) -> Void
 
     private var extensions: Binding<String> {
         Binding(
@@ -432,56 +548,109 @@ struct RuleDetailView: View {
 
     var body: some View {
         Form {
-            Section("Rule \(position)") {
-                TextField("Name", text: $rule.name)
-                Toggle("Enabled", isOn: $rule.enabled)
+            Section {
+                LabeledContent("Name") {
+                    FormField(text: $rule.name, prompt: "Screenshots")
+                }
+                Toggle("Rule is on", isOn: $rule.enabled)
                 Picker("Runs", selection: $rule.trigger) {
                     Text("When files change").tag(Rule.Trigger.event)
                     Text("Once a day").tag(Rule.Trigger.daily)
                 }
-                Text(rule.trigger == .daily
-                     ? "Age based rules belong here; they are checked on the daily timer."
-                     : "Reacts to file system events, and is also checked once a day.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Watch") {
-                ForEach(Array(rule.watch.enumerated()), id: \.offset) { index, folder in
-                    HStack {
-                        Text(folder).lineLimit(1).truncationMode(.head)
-                        Spacer()
-                        Button("Change") { changeFolder(at: index) }
-                        Button("Remove") { rule.watch.remove(at: index) }
+                LabeledContent("Order") {
+                    HStack(spacing: 8) {
+                        Text("\(position) of \(total)").foregroundStyle(.secondary)
+                        Button("Move Up") { onMove(-1) }
+                            .disabled(position == 1)
+                        Button("Move Down") { onMove(1) }
+                            .disabled(position == total)
                     }
                 }
-                Button("Add Folder") { addFolder() }
-                Toggle("Also move folders, not just files", isOn: $rule.includeDirectories)
-                Text("Only the direct contents of these folders are considered, never subfolders.")
-                    .font(.caption)
+            } header: {
+                Text("Rule")
+            } footer: {
+                Text(rule.trigger == .daily
+                     ? "Checked once a day, which is what age based rules want. The first rule in the list that matches a file wins, so order matters."
+                     : "Reacts the moment a file lands, and is checked again once a day. The first rule in the list that matches a file wins, so order matters.")
                     .foregroundStyle(.secondary)
             }
 
-            Section("Match") {
-                TextField("Extensions", text: extensions, prompt: Text("pdf, docx, png. Empty matches every file"))
-                TextField("Filename pattern", text: namePattern, prompt: Text("Optional regex"))
-                    .font(.system(.body, design: .monospaced))
-                TextField("Modified at least this many days ago", text: days(\.minAgeDays), prompt: Text("Any"))
-                    .frame(maxWidth: 260)
-                TextField("Modified and opened at least this many days ago", text: days(\.minIdleDays), prompt: Text("Any"))
-                    .frame(maxWidth: 260)
-                Toggle("Only files naming a course code", isOn: $rule.match.requiresCourseCode)
+            Section {
+                if rule.watch.isEmpty {
+                    LabeledContent("Folders") {
+                        Text("None yet").foregroundStyle(.secondary)
+                    }
+                }
+                ForEach(Array(rule.watch.enumerated()), id: \.offset) { index, folder in
+                    LabeledContent(index == 0 ? "Folders" : "") {
+                        HStack(spacing: 8) {
+                            Text(folder)
+                                .lineLimit(1)
+                                .truncationMode(.head)
+                                .help(folder)
+                            Spacer(minLength: 8)
+                            Button("Change") { changeFolder(at: index) }
+                            Button("Remove") { rule.watch.remove(at: index) }
+                        }
+                    }
+                }
+                LabeledContent("") {
+                    Button("Add Folder") { addFolder() }
+                }
+                Toggle("Also move folders, not just files", isOn: $rule.includeDirectories)
+            } header: {
+                Text("Watch")
+            } footer: {
+                Text("Only what sits directly in these folders is considered, never their subfolders.")
+                    .foregroundStyle(.secondary)
             }
 
-            Section("Destination") {
-                TextField("Folder", text: $rule.destination, prompt: Text("~/Downloads/Code"))
-                Button("Choose Folder") { chooseDestination() }
-                Text("Tokens: {term} {course} {sourceFolder} {name} {stem} {ext} {fileYear} {fileMonth} {fileDay}, plus any named group from the filename pattern. Missing folders are created.")
-                    .font(.caption)
+            Section {
+                LabeledContent("Extensions") {
+                    FormField(text: extensions, prompt: "pdf, docx, png")
+                }
+                LabeledContent("Filename pattern") {
+                    FormField(text: namePattern, prompt: "Optional regular expression", monospaced: true)
+                }
+                LabeledContent("Modified at least") {
+                    daysField(days(\.minAgeDays))
+                }
+                LabeledContent("Modified and opened at least") {
+                    daysField(days(\.minIdleDays))
+                }
+                Toggle("Only files naming a course code", isOn: $rule.match.requiresCourseCode)
+            } header: {
+                Text("Match")
+            } footer: {
+                Text("Leave a field empty to ignore it. With everything empty the rule takes every file in the watched folders, which is what a catch-all wants.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                LabeledContent("Folder") {
+                    FormField(text: $rule.destination, prompt: "~/Downloads/Code")
+                }
+                LabeledContent("") {
+                    Button("Choose Folder") { chooseDestination() }
+                }
+            } header: {
+                Text("Move to")
+            } footer: {
+                Text("Missing folders are created. Tokens: {term} {course} {sourceFolder} {name} {stem} {ext} {fileYear} {fileMonth} {fileDay}, plus any named group from the filename pattern.")
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func daysField(_ binding: Binding<String>) -> some View {
+        HStack(spacing: 6) {
+            TextField("", text: binding, prompt: Text("any"))
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 58)
+            Text("days ago").foregroundStyle(.secondary)
+        }
     }
 
     private func addFolder() {
@@ -516,8 +685,8 @@ final class RulesWindowController: NSObject, NSWindowDelegate {
         if window == nil {
             let window = WindowFactory.make(
                 title: "Tidy Rules",
-                size: NSSize(width: 940, height: 640),
-                minSize: NSSize(width: 820, height: 520),
+                size: NSSize(width: 940, height: 620),
+                minSize: NSSize(width: 820, height: 540),
                 content: RulesView(model: model)
             )
             window.delegate = self
