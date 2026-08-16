@@ -47,12 +47,16 @@ Reopen Tidy after changing either setting. Destinations outside those three fold
 | Organizing | Pauses or resumes everything without quitting |
 | Dry Run | Evaluates rules and logs what *would* happen, moves nothing |
 | Organize Now | Runs every rule immediately, including the age-based ones |
-| Open Log | Recent moves, newest first |
-| Edit Rules | Opens `rules.json` in your default editor |
+| Open Log | Native window listing recent moves, newest first |
+| Edit Rules | Native window for editing `rules.json`, validated before it saves |
 | Launch at Login | Registers the app with `SMAppService` |
 | Quit Tidy | Stops watching |
 
-Edits to `rules.json` are picked up within a minute; no restart, no rebuild.
+Both windows are also reachable without the menu: `open tidy://log`, `open tidy://rules`,
+and reopening Tidy from Spotlight, Finder or Raycast shows the log.
+
+Saving in the editor applies the rules immediately. Editing `rules.json` outside the app
+is still fine; those changes are picked up within a minute. No restart, no rebuild.
 
 ---
 
@@ -120,6 +124,21 @@ an unknown token never fires, and the menu shows the warning.
 If Spotlight keeps refreshing access times on your machine and rule 4 never fires, swap
 `minIdleDays` for `minAgeDays`, which looks only at the modification date.
 
+### The rules editor
+
+**Edit Rules** opens a window with a table of the rules in evaluation order, position
+first, then trigger, name, watched folders and destination. Disabled rules are greyed and
+marked `off`. Warnings, such as a destination using an unknown token, appear above the
+text.
+
+Below the table is the raw JSON, validated as you type. A syntax error or a missing key is
+reported at the bottom with its location, for example `missing "destination" at rules[3]`,
+and **Save** stays disabled until the text parses, so a broken file can never reach disk.
+Command-S saves. Saving writes your text as typed, reloads the rules and sweeps at once.
+
+**Reload** re-reads the file and **Reveal in Finder** shows it. If another editor changed
+the file while the window was open, saving asks before overwriting.
+
 ### Adding a rule
 
 Drop a new object into `rules`. For example, filing job application material by company:
@@ -133,8 +152,9 @@ Drop a new object into `rules`. For example, filing job application material by 
 }
 ```
 
-Save the file. Within a minute Tidy reloads it, starts watching any new folders, and
-applies the rule. Use **Organize Now** if you do not want to wait.
+Save, and the rule is live: Tidy starts watching any new folders it names and applies it
+immediately. Rules edited outside the app land within a minute, or at once via
+**Organize Now**.
 
 ---
 

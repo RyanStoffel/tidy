@@ -13,6 +13,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let work = DispatchQueue(label: "com.ryanstoffel.tidy.work", qos: .utility)
     private let log = MoveLog()
     private lazy var logWindow = LogWindowController(log: log)
+    private lazy var rulesWindow = RulesWindowController { [weak self] in
+        self?.rulesSaved()
+    }
     private lazy var watchers = WatchSet(queue: work) { [weak self] url in
         self?.scheduleScan(of: url)
     }
@@ -99,6 +102,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func reloadConfigIfChanged() {
         let stamp = modificationDate(of: Paths.rulesFile)
         guard stamp != rulesStamp else { return }
+        loadConfig()
+        if configError == nil { runSweep(triggers: [.event]) }
+    }
+
+    /// The editor saved: apply the new rules now instead of waiting for the timer.
+    private func rulesSaved() {
         loadConfig()
         if configError == nil { runSweep(triggers: [.event]) }
     }
@@ -296,8 +305,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func editRules() {
-        if (try? ConfigStore.loadOrCreate()) != nil {
-            NSWorkspace.shared.open(Paths.rulesFile)
+        rulesWindow.show()
+    }
+
+    /// Reopening Tidy from Finder, Spotlight or Raycast shows recent activity.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        logWindow.show()
+        return false
+    }
+
+    /// tidy://log and tidy://rules open the windows without going through the menu.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            switch url.host ?? url.lastPathComponent {
+            case "log": logWindow.show()
+            case "rules": rulesWindow.show()
+            default: break
+            }
         }
     }
 

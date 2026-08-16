@@ -183,6 +183,53 @@ public enum ConfigStore {
         data.append(0x0A)
         try data.write(to: url, options: .atomic)
     }
+
+    public static func decode(_ text: String) throws -> Config {
+        try JSONDecoder().decode(Config.self, from: Data(text.utf8))
+    }
+
+    /// Writes the user's text verbatim so hand formatting survives a save.
+    public static func write(_ text: String, to url: URL = Paths.rulesFile) throws {
+        try Paths.ensureSupportDirectory()
+        var data = Data(text.utf8)
+        if data.last != 0x0A { data.append(0x0A) }
+        try data.write(to: url, options: .atomic)
+    }
+
+    /// Turns a decoding failure into something worth showing in the rules editor.
+    public static func describe(_ error: Error) -> String {
+        switch error {
+        case let DecodingError.keyNotFound(key, context):
+            return "missing \"\(key.stringValue)\"\(location(context))"
+        case let DecodingError.typeMismatch(type, context):
+            return "wrong type\(location(context)): expected \(type)"
+        case let DecodingError.valueNotFound(type, context):
+            return "no value\(location(context)): expected \(type)"
+        case let DecodingError.dataCorrupted(context):
+            let path = path(of: context.codingPath)
+            return path.isEmpty
+                ? "invalid JSON: \(context.debugDescription)"
+                : "invalid value at \(path): \(context.debugDescription)"
+        default:
+            return error.localizedDescription
+        }
+    }
+
+    private static func location(_ context: DecodingError.Context) -> String {
+        let path = path(of: context.codingPath)
+        return path.isEmpty ? "" : " at \(path)"
+    }
+
+    /// `rules[3].destination` rather than Foundation's bracketed key list.
+    private static func path(of codingPath: [CodingKey]) -> String {
+        codingPath.reduce(into: "") { result, key in
+            if let index = key.intValue {
+                result += "[\(index)]"
+            } else {
+                result += result.isEmpty ? key.stringValue : ".\(key.stringValue)"
+            }
+        }
+    }
 }
 
 // MARK: - Defaults

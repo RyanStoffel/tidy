@@ -63,10 +63,11 @@ public final class FileGuards {
     }
 
     /// Samples the size twice, `settleSeconds` apart, and reports whether it held still.
+    /// The second reading must bypass URL resource caching or a growing file looks settled.
     public func isStable(_ url: URL, initialSize: Int64) -> Bool {
         guard settleSeconds > 0 else { return true }
         Thread.sleep(forTimeInterval: settleSeconds)
-        guard let now = size(of: url) else { return false }
+        guard let now = FileStat.size(of: url) else { return false }
         return now == initialSize
     }
 
@@ -93,13 +94,6 @@ public final class FileGuards {
             return name
         }
         return nil
-    }
-
-    private func size(of url: URL) -> Int64? {
-        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
-              let size = values.fileSize
-        else { return nil }
-        return Int64(size)
     }
 
     /// True when any ancestor up to the home directory is an Obsidian vault, meaning it

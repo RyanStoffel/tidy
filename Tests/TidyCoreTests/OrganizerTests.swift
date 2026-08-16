@@ -88,6 +88,17 @@ final class OrganizerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: note.path))
     }
 
+    /// The second size sample has to come from disk. URL resource values are cached per
+    /// URL instance, which once made every growing file look settled.
+    func testAFileThatChangedSizeSinceTheFirstSampleIsNotStable() throws {
+        let file = try TestSupport.makeFile(downloads.appendingPathComponent("clip.mov"), contents: "0123456789")
+        let guards = FileGuards(config: Config(settleSeconds: 0.05))
+        let facts = try TestSupport.facts(file)
+
+        XCTAssertTrue(guards.isStable(file, initialSize: facts.size))
+        XCTAssertFalse(guards.isStable(file, initialSize: facts.size - 4))
+    }
+
     func testSchoolRoutingWinsOverArchivingForAStaleDocument() throws {
         let documents = try TestSupport.makeDirectory(downloads.appendingPathComponent("Documents"))
         let old = try TestSupport.makeFile(documents.appendingPathComponent("CS101 final project.pdf"))

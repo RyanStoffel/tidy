@@ -10,10 +10,11 @@ final class LogStore: ObservableObject {
     }
 }
 
-/// Recent activity, newest first. Deliberately plain: one row per action, no chrome.
+/// Recent activity, newest first, in a standard macOS table.
 struct LogView: View {
     @ObservedObject var store: LogStore
     let logPath: String
+    let onReveal: () -> Void
     let onClear: () -> Void
 
     private static let time: DateFormatter = {
@@ -23,84 +24,75 @@ struct LogView: View {
     }()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if store.entries.isEmpty {
-                Text("No activity yet.")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .padding(16)
-                Spacer()
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(store.entries) { entry in
-                            row(entry)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                }
-            }
-            Divider().overlay(Color.white.opacity(0.15))
+        VStack(alignment: .leading, spacing: 12) {
+            table
             HStack(spacing: 12) {
                 Text("\(store.entries.count) entries")
                 Text(logPath)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.head)
-                Spacer()
+                Spacer(minLength: 8)
+                Button("Reveal in Finder", action: onReveal)
                 Button("Clear", action: onClear)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.8))
+                    .disabled(store.entries.isEmpty)
             }
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.5))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .font(.callout)
         }
-        .frame(minWidth: 640, minHeight: 360)
-        .background(Color.black)
+        .padding(16)
+        .frame(minWidth: 620, minHeight: 320)
     }
 
-    private func row(_ entry: LogEntry) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(Self.time.string(from: entry.date))
-                .foregroundStyle(.white.opacity(0.5))
-            Text(marker(entry.kind))
-                .foregroundStyle(color(entry.kind))
-                .frame(width: 44, alignment: .leading)
-            Text(entry.rule)
-                .foregroundStyle(.white.opacity(0.7))
-                .frame(width: 170, alignment: .leading)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Text(detail(entry))
-                .foregroundStyle(.white)
-                .textSelection(.enabled)
-            Spacer(minLength: 0)
+    private var table: some View {
+        Table(store.entries) {
+            TableColumn("Time") { entry in
+                Text(Self.time.string(from: entry.date)).monospacedDigit()
+            }
+            .width(130)
+
+            TableColumn("Action") { entry in
+                Text(action(entry.kind))
+                    .foregroundStyle(entry.kind == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.primary))
+                    .help(entry.detail ?? "")
+            }
+            .width(60)
+
+            TableColumn("Rule") { entry in
+                Text(entry.rule).lineLimit(1).truncationMode(.middle)
+            }
+            .width(min: 110, ideal: 160)
+
+            TableColumn("File") { entry in
+                Text(entry.source)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .textSelection(.enabled)
+            }
+            .width(min: 140, ideal: 240)
+
+            TableColumn("Destination") { entry in
+                Text(entry.destination ?? entry.detail ?? "")
+                    .foregroundStyle(entry.destination == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .textSelection(.enabled)
+            }
+            .width(min: 140, ideal: 280)
         }
-        .font(.system(size: 12, design: .monospaced))
+        .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .overlay {
+            if store.entries.isEmpty {
+                Text("No activity yet")
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
-    private func detail(_ entry: LogEntry) -> String {
-        var text = entry.source
-        if let destination = entry.destination { text += "  ->  " + destination }
-        if let extra = entry.detail { text += "  (" + extra + ")" }
-        return text
-    }
-
-    private func marker(_ kind: LogEntry.Kind) -> String {
+    private func action(_ kind: LogEntry.Kind) -> String {
         switch kind {
         case .moved: return "moved"
-        case .dryRun: return "dry"
+        case .dryRun: return "dry run"
         case .failed: return "failed"
-        }
-    }
-
-    private func color(_ kind: LogEntry.Kind) -> Color {
-        switch kind {
-        case .moved: return .white
-        case .dryRun: return Color(white: 0.65)
-        case .failed: return Color(red: 1, green: 0.42, blue: 0.38)
         }
     }
 }
@@ -121,25 +113,22 @@ final class LogWindowController {
             let view = LogView(
                 store: store,
                 logPath: Paths.abbreviate(log.fileURL),
+                onReveal: { [weak self] in
+                    guard let self else { return }
+                    NSWorkspace.shared.activateFileViewerSelecting([self.log.fileURL])
+                },
                 onClear: { [weak self] in
                     guard let self else { return }
                     self.log.clear()
                     self.store.reload(from: self.log)
                 }
             )
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 760, height: 420),
-                styleMask: [.titled, .closable, .resizable, .miniaturizable],
-                backing: .buffered,
-                defer: false
+            window = WindowFactory.make(
+                title: "Tidy Log",
+                size: NSSize(width: 860, height: 460),
+                minSize: NSSize(width: 620, height: 320),
+                content: view
             )
-            window.title = "Tidy Log"
-            window.isReleasedWhenClosed = false
-            window.backgroundColor = .black
-            window.appearance = NSAppearance(named: .darkAqua)
-            window.contentView = NSHostingView(rootView: view)
-            window.center()
-            self.window = window
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
