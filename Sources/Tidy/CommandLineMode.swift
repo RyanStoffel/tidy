@@ -14,6 +14,7 @@ enum CommandLineMode {
       --events-only         skip age-based (daily) rules
       --verbose             also report files a rule wanted but a guard held back
       --print-default-rules write the built-in rules.json to stdout
+      --snapshot <dir>      render the windows to PNGs, for docs and design review
       --help                show this message
     """
 
@@ -25,6 +26,9 @@ enum CommandLineMode {
         }
         if arguments.contains("--print-default-rules") {
             return printDefaultRules()
+        }
+        if let index = arguments.firstIndex(of: "--snapshot"), index + 1 < arguments.count {
+            return WindowSnapshot.write(to: Paths.expand(arguments[index + 1]))
         }
         guard arguments.contains("--sweep") else { return nil }
         return sweep(arguments)

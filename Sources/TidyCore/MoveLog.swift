@@ -58,12 +58,13 @@ public final class MoveLog {
         write(snapshot)
     }
 
-    /// Newest first.
+    /// Newest first, by timestamp rather than by insertion order.
     public func recent(_ count: Int? = nil) -> [LogEntry] {
         lock.lock()
         defer { lock.unlock() }
-        guard let count else { return entries }
-        return Array(entries.prefix(count))
+        let sorted = entries.sorted { $0.date > $1.date }
+        guard let count else { return sorted }
+        return Array(sorted.prefix(count))
     }
 
     public func clear() {

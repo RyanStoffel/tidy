@@ -133,8 +133,15 @@ final class OrganizerTests: XCTestCase {
 
     func testLogKeepsNewestEntriesUpToTheLimit() throws {
         let log = MoveLog(url: root.appendingPathComponent("log.json"), limit: 3)
+        let start = Date()
         log.append((1...5).map {
-            LogEntry(rule: "r", source: "file\($0)", destination: "dest", kind: .moved)
+            LogEntry(
+                date: start.addingTimeInterval(Double($0)),
+                rule: "r",
+                source: "file\($0)",
+                destination: "dest",
+                kind: .moved
+            )
         })
 
         XCTAssertEqual(log.recent().map(\.source), ["file5", "file4", "file3"])
@@ -142,5 +149,18 @@ final class OrganizerTests: XCTestCase {
             MoveLog(url: root.appendingPathComponent("log.json"), limit: 3).recent().map(\.source),
             ["file5", "file4", "file3"]
         )
+    }
+
+    /// The window shows newest first no matter what order a batch arrived in.
+    func testLogSortsByTimestampNotInsertionOrder() throws {
+        let log = MoveLog(url: root.appendingPathComponent("log.json"))
+        let start = Date()
+        log.append([
+            LogEntry(date: start, rule: "r", source: "middle", destination: "d", kind: .moved),
+            LogEntry(date: start.addingTimeInterval(-60), rule: "r", source: "oldest", destination: "d", kind: .moved),
+            LogEntry(date: start.addingTimeInterval(60), rule: "r", source: "newest", destination: "d", kind: .moved),
+        ])
+
+        XCTAssertEqual(log.recent().map(\.source), ["newest", "middle", "oldest"])
     }
 }
